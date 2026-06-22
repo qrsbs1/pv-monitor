@@ -157,7 +157,7 @@
 </div>
 
 <div class="footer">
-  MQTT Broker: broker.emqx.io:8083 | Topic: pv_monitor/data | 数据点数: <span id="data_count">0</span>
+  MQTT Broker: broker-cn.emqx.io | Topic: pv_monitor/data | 数据点数: <span id="data_count">0</span>
 </div>
 
 <script>
@@ -254,7 +254,7 @@ function setStatus(online) {
 }
 
 // ============ MQTT 连接 ============
-const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';  // WebSocket TLS
+const brokerUrl = 'wss://broker-cn.emqx.io:8084/mqtt';  // WebSocket TLS (中国区)
 const topic = 'pv_monitor/data';
 
 console.log('Connecting to MQTT broker:', brokerUrl);
