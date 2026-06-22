@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>光伏储能数据采集系统</title>
+<!-- MQTT.js -->
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<!-- ECharts -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0e27;
+    --card-bg: #111640;
+    --border: #1e2358;
+    --accent: #00d4aa;
+    --voltage: #f7b731;
+    --current: #45aaf2;
+    --power: #fc5c65;
+    --temp: #fd9644;
+    --light: #fed330;
+    --text: #c8d6e5;
+    --sub: #8395a7;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    min-height: 100vh;
+    padding: 16px;
+  }
+  .header {
+    text-align: center;
+    padding: 20px 0 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .header h1 { font-size: 28px; font-weight: 700; letter-spacing: 2px; }
+  .header h1 span { color: var(--accent); }
+  .header .sub { color: var(--sub); font-size: 13px; margin-top: 6px; }
+  .status {
+    display: inline-block;
+    padding: 3px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 12px;
+  }
+  .status.online { background: rgba(0,212,170,0.15); color: var(--accent); }
+  .status.offline { background: rgba(252,92,101,0.15); color: var(--power); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+  .card .label { font-size: 13px; color: var(--sub); margin-bottom: 10px; letter-spacing: 1px; }
+  .card .value { font-size: 36px; font-weight: 700; }
+  .card .unit { font-size: 14px; color: var(--sub); margin-left: 4px; }
+
+  .charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .chart-box {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .chart-box .chart-title { font-size: 14px; color: var(--sub); margin-bottom: 8px; letter-spacing: 1px; }
+  .chart { width: 100%; height: 280px; }
+
+  .footer {
+    text-align: center;
+    color: var(--sub);
+    font-size: 11px;
+    opacity: 0.5;
+    padding: 10px;
+  }
+
+  @media (max-width: 768px) {
+    .charts-row { grid-template-columns: 1fr; }
+    .header h1 { font-size: 22px; }
+    .card .value { font-size: 28px; }
+    .chart { height: 220px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>☀️ 光伏储能<span>数据监测</span>系统
+    <span class="status" id="status">● 等待连接</span>
+  </h1>
+  <div class="sub">基于 ESP8266 + MQTT · 实时数据采集</div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="label">⚡ 光伏电压</div>
+    <div class="value" style="color:var(--voltage)" id="val_v">--</div>
+    <div class="unit">V</div>
+  </div>
+  <div class="card">
+    <div class="label">🔌 光伏电流</div>
+    <div class="value" style="color:var(--current)" id="val_c">--</div>
+    <div class="unit">A</div>
+  </div>
+  <div class="card">
+    <div class="label">💡 发电功率</div>
+    <div class="value" style="color:var(--power)" id="val_p">--</div>
+    <div class="unit">W</div>
+  </div>
+  <div class="card">
+    <div class="label">🌡️ 板面温度</div>
+    <div class="value" style="color:var(--temp)" id="val_t">--</div>
+    <div class="unit">°C</div>
+  </div>
+  <div class="card">
+    <div class="label">☀️ 光照强度</div>
+    <div class="value" style="color:var(--light)" id="val_l">--</div>
+    <div class="unit">W/m²</div>
+  </div>
+</div>
+
+<div class="charts-row">
+  <div class="chart-box">
+    <div class="chart-title">📊 电压 / 电流趋势</div>
+    <div class="chart" id="chart_vi"></div>
+  </div>
+  <div class="chart-box">
+    <div class="chart-title">📊 功率趋势</div>
+    <div class="chart" id="chart_p"></div>
+  </div>
+  <div class="chart-box">
+    <div class="chart-title">📊 温度趋势</div>
+    <div class="chart" id="chart_t"></div>
+  </div>
+  <div class="chart-box">
+    <div class="chart-title">📊 光照强度趋势</div>
+    <div class="chart" id="chart_l"></div>
+  </div>
+</div>
+
+<div class="footer">
+  MQTT Broker: broker.emqx.io:8083 | Topic: pv_monitor/data | 数据点数: <span id="data_count">0</span>
+</div>
+
+<script>
+// ============ 全局数据缓存 ============
+const MAX_POINTS = 100;
+let history = [];
+let connected = false;
+
+// ============ ECharts 初始化 ============
+function createChart(domId) {
+  const dom = document.getElementById(domId);
+  const chart = echarts.init(dom);
+  window.addEventListener('resize', () => chart.resize());
+  return chart;
+}
+
+const chartVI = createChart('chart_vi');
+const chartP  = createChart('chart_p');
+const chartT  = createChart('chart_t');
+const chartL  = createChart('chart_l');
+
+function baseOption(title) {
+  return {
+    grid: { top: 20, right: 20, bottom: 30, left: 55 },
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(17,22,64,0.95)', borderColor: '#1e2358', textStyle: { color: '#c8d6e5', fontSize: 12 } },
+    xAxis: { type: 'category', data: [], axisLine: { lineStyle: { color: '#1e2358' } }, axisTick: { show: false }, axisLabel: { color: '#8395a7', fontSize: 10, rotate: 45 } },
+    yAxis: { type: 'value', axisLine: { lineStyle: { color: '#1e2358' } }, splitLine: { lineStyle: { color: 'rgba(30,35,88,0.3)' } }, axisLabel: { color: '#8395a7', fontSize: 10 } },
+  };
+}
+
+chartVI.setOption(baseOption());
+chartP.setOption(baseOption());
+chartT.setOption(baseOption());
+chartL.setOption(baseOption());
+
+// ============ 更新卡片 ============
+function updateCard(id, val, decimals) {
+  document.getElementById(id).textContent = val.toFixed(decimals);
+}
+
+// ============ 更新时间轴 ============
+function getTimeLabels() {
+  return history.map(h => {
+    const d = new Date(h.time);
+    return d.toLocaleTimeString('zh-CN', { hour12: false });
+  });
+}
+
+// ============ 更新图表 ============
+function updateCharts() {
+  const labels = getTimeLabels();
+
+  chartVI.setOption({
+    series: [
+      { name: '电压(V)', type: 'line', data: history.map(h => h.voltage), smooth: true, symbol: 'none', lineStyle: { color: '#f7b731', width: 2 }, areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(247,183,49,0.25)'},{offset:1,color:'rgba(247,183,49,0)'}]) } },
+      { name: '电流(A)', type: 'line', data: history.map(h => h.current), smooth: true, symbol: 'none', lineStyle: { color: '#45aaf2', width: 2 }, areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(69,170,242,0.25)'},{offset:1,color:'rgba(69,170,242,0)'}]) } },
+    ],
+    xAxis: { data: labels },
+  });
+
+  chartP.setOption({
+    series: [
+      { name: '功率(W)', type: 'line', data: history.map(h => h.power), smooth: true, symbol: 'none', lineStyle: { color: '#fc5c65', width: 2 }, areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(252,92,101,0.3)'},{offset:1,color:'rgba(252,92,101,0)'}]) } },
+    ],
+    xAxis: { data: labels },
+  });
+
+  chartT.setOption({
+    series: [
+      { name: '温度(°C)', type: 'line', data: history.map(h => h.temp), smooth: true, symbol: 'none', lineStyle: { color: '#fd9644', width: 2 }, areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(253,150,68,0.25)'},{offset:1,color:'rgba(253,150,68,0)'}]) } },
+    ],
+    xAxis: { data: labels },
+  });
+
+  chartL.setOption({
+    series: [
+      { name: '光照(W/m²)', type: 'line', data: history.map(h => h.light), smooth: true, symbol: 'none', lineStyle: { color: '#fed330', width: 2 }, areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(254,211,48,0.25)'},{offset:1,color:'rgba(254,211,48,0)'}]) } },
+    ],
+    xAxis: { data: labels },
+  });
+}
+
+// ============ 更新状态 ============
+function setStatus(online) {
+  const el = document.getElementById('status');
+  connected = online;
+  if (online) {
+    el.textContent = '● 在线';
+    el.className = 'status online';
+  } else {
+    el.textContent = '● 离线';
+    el.className = 'status offline';
+  }
+}
+
+// ============ MQTT 连接 ============
+const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';  // WebSocket TLS
+const topic = 'pv_monitor/data';
+
+console.log('Connecting to MQTT broker:', brokerUrl);
+
+const client = mqtt.connect(brokerUrl, {
+  clientId: 'web_pv_dashboard_' + Math.random().toString(16).slice(2, 8),
+  clean: true,
+  connectTimeout: 10000,
+  reconnectPeriod: 3000,
+});
+
+client.on('connect', () => {
+  console.log('MQTT connected');
+  setStatus(true);
+  client.subscribe(topic, (err) => {
+    if (!err) console.log('Subscribed to', topic);
+    else console.error('Subscribe error:', err);
+  });
+});
+
+client.on('message', (topic, payload) => {
+  try {
+    const data = JSON.parse(payload.toString());
+    console.log('Received:', data);
+
+    // 更新卡片
+    if (data.voltage !== undefined) updateCard('val_v', data.voltage, 2);
+    if (data.current !== undefined) updateCard('val_c', data.current, 2);
+    if (data.power   !== undefined) updateCard('val_p', data.power, 2);
+    if (data.temp    !== undefined) updateCard('val_t', data.temp, 1);
+    if (data.light   !== undefined) updateCard('val_l', data.light, 1);
+
+    // 存入历史
+    history.push({
+      time: Date.now(),
+      voltage: data.voltage || 0,
+      current: data.current || 0,
+      power:   data.power || 0,
+      temp:    data.temp || 0,
+      light:   data.light || 0,
+    });
+    if (history.length > MAX_POINTS) history.shift();
+
+    document.getElementById('data_count').textContent = history.length;
+
+    // 实时刷新图表（节流：每500ms最多渲染一次）
+    if (!updateCharts._timer) {
+      updateCharts._timer = setTimeout(() => {
+        updateCharts();
+        updateCharts._timer = null;
+      }, 500);
+    }
+  } catch (e) {
+    console.error('Parse error:', e);
+  }
+});
+
+client.on('reconnect', () => {
+  console.log('MQTT reconnecting...');
+  setStatus(false);
+});
+
+client.on('error', (err) => {
+  console.error('MQTT error:', err);
+  setStatus(false);
+});
+
+client.on('close', () => {
+  console.log('MQTT disconnected');
+  setStatus(false);
+});
+</script>
+</body>
+</html>
