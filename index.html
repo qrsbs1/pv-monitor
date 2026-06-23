@@ -14,14 +14,14 @@
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background: var(--bg); color: var(--text); font-family: 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; min-height: 100vh; }
-  .header { text-align: center; padding: 16px; border-bottom: 1px solid var(--border); }
+  .header { text-align: center; padding: 16px; border-bottom: 1px solid var(--border); position: relative; }
   .header h1 { font-size: 22px; letter-spacing: 2px; }
   .header h1 span { color: var(--accent); }
   .header .sub { color: var(--sub); font-size: 11px; margin-top: 4px; }
   .status { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; margin-left: 8px; }
   .status.online { background: rgba(0,212,170,0.15); color: var(--accent); }
   .status.offline { background: rgba(252,92,101,0.15); color: var(--pclr); }
-  .back-link { display: inline-block; color: var(--accent); text-decoration: none; font-size: 12px; padding: 2px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); margin-bottom: 8px; }
+  .back-link { position: absolute; left: 16px; top: 16px; color: var(--accent); text-decoration: none; font-size: 12px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); }
   .back-link:hover { background: var(--border); }
   .container { max-width: 1200px; margin: 0 auto; padding: 12px; }
 
