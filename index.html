@@ -3,128 +3,160 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>光伏储能数据采集与追光控制系统</title>
+<title>实时数据看板 - 光伏储能系统</title>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
   :root {
     --bg: #0a0e27; --card: #111640; --border: #1e2358; --accent: #00d4aa;
+    --vclr: #f7b731; --cclr: #45aaf2; --pclr: #fc5c65; --tclr: #fd9644; --lclr: #fed330;
     --text: #c8d6e5; --sub: #8395a7;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body {
-    background: var(--bg); color: var(--text);
-    font-family: 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
-    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
-  }
-  .hero { text-align: center; padding: 60px 20px 30px; }
-  .hero .icon { font-size: 64px; margin-bottom: 16px; }
-  .hero h1 { font-size: 32px; letter-spacing: 3px; margin-bottom: 8px; }
-  .hero h1 span { color: var(--accent); }
-  .hero .subtitle { color: var(--sub); font-size: 14px; margin-top: 8px; }
-  .hero .badge {
-    display: inline-block; margin-top: 16px; padding: 4px 16px;
-    border: 1px solid var(--accent); border-radius: 20px;
-    color: var(--accent); font-size: 12px; letter-spacing: 1px;
-  }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; min-height: 100vh; }
+  .header { text-align: center; padding: 16px; border-bottom: 1px solid var(--border); }
+  .header h1 { font-size: 22px; letter-spacing: 2px; }
+  .header h1 span { color: var(--accent); }
+  .header .sub { color: var(--sub); font-size: 11px; margin-top: 4px; }
+  .status { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; margin-left: 8px; }
+  .status.online { background: rgba(0,212,170,0.15); color: var(--accent); }
+  .status.offline { background: rgba(252,92,101,0.15); color: var(--pclr); }
+  .back-link { display: inline-block; color: var(--accent); text-decoration: none; font-size: 12px; padding: 2px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); margin-bottom: 8px; }
+  .back-link:hover { background: var(--border); }
+  .container { max-width: 1200px; margin: 0 auto; padding: 12px; }
 
-  .cards {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(320px,1fr));
-    gap: 20px; max-width: 800px; width: 100%; padding: 20px;
-  }
-  .card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 14px; padding: 30px 24px; text-align: center;
-    transition: border-color 0.3s, transform 0.2s;
-    text-decoration: none; color: inherit; display: block;
-  }
-  .card:hover {
-    border-color: var(--accent); transform: translateY(-2px);
-  }
-  .card .emoji { font-size: 48px; margin-bottom: 12px; }
-  .card h2 { font-size: 20px; margin-bottom: 8px; }
-  .card p { color: var(--sub); font-size: 13px; line-height: 1.6; margin-bottom: 16px; }
-  .card .tag {
-    display: inline-block; padding: 2px 10px; border-radius: 10px;
-    font-size: 11px; margin: 2px;
-  }
-  .tag.green { background: rgba(0,212,170,0.12); color: var(--accent); }
-  .tag.blue  { background: rgba(69,170,242,0.12); color: #45aaf2; }
-  .tag.gold  { background: rgba(247,183,49,0.12); color: #f7b731; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px,1fr)); gap: 12px; margin-bottom: 12px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+  .card .label { font-size: 12px; color: var(--sub); margin-bottom: 6px; }
+  .card .value { font-size: 32px; font-weight: 700; }
+  .card .unit { font-size: 12px; color: var(--sub); margin-left: 2px; }
 
-  .section-title {
-    text-align: center; padding: 10px;
-    color: var(--sub); font-size: 12px; letter-spacing: 2px;
-  }
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .chart-box { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .chart-box .chart-title { font-size: 13px; color: var(--sub); margin-bottom: 6px; }
+  .chart { width: 100%; height: 260px; }
 
-  .footer {
-    margin-top: auto; padding: 24px; text-align: center;
-    color: var(--sub); font-size: 11px; opacity: 0.5;
-  }
+  .footer { text-align: center; color: var(--sub); font-size: 10px; opacity: 0.5; padding: 8px; }
+  @media (max-width: 768px) { .charts-row { grid-template-columns: 1fr; } .chart { height: 200px; } }
 </style>
 </head>
 <body>
 
-<div class="hero">
-  <div class="icon">☀️</div>
-  <h1>光伏储能<span>数据采集</span>与<span>追光控制</span>系统</h1>
-  <div class="subtitle">基于 STM32 + ESP8266 + MQTT 的物联网光伏监测方案</div>
-  <div class="badge">嵌入式比赛作品</div>
+<div class="header">
+  <h1>📊 实时数据<span>看板</span><span class="status" id="status">● 等待连接</span></h1>
+  <div class="sub">ESP8266 → MQTT → 浏览器直连 | 实时监控光伏数据</div>
 </div>
 
-<div class="section-title">▼ 点击进入对应看板 ▼</div>
+<div class="container">
+  <div class="grid">
+    <div class="card"><div class="label">⚡ 光伏电压</div><div class="value" style="color:var(--vclr)" id="val_v">--</div><div class="unit">V</div></div>
+    <div class="card"><div class="label">🔌 光伏电流</div><div class="value" style="color:var(--cclr)" id="val_c">--</div><div class="unit">A</div></div>
+    <div class="card"><div class="label">💡 发电功率</div><div class="value" style="color:var(--pclr)" id="val_p">--</div><div class="unit">W</div></div>
+    <div class="card"><div class="label">🌡️ 板面温度</div><div class="value" style="color:var(--tclr)" id="val_t">--</div><div class="unit">°C</div></div>
+    <div class="card"><div class="label">☀️ 光照强度</div><div class="value" style="color:var(--lclr)" id="val_l">--</div><div class="unit">W/m²</div></div>
+  </div>
 
-<div class="cards">
-  <!-- 看板 A：实时数据 -->
-  <a class="card" href="https://qrsbs1.github.io/pv-monitor/realtime.html">
-    <div class="emoji">📊</div>
-    <h2>实时数据看板</h2>
-    <p>ESP8266 实时推送 · MQTT 直连 · 动态趋势曲线</p>
-    <span class="tag green">实时监控</span>
-    <span class="tag blue">ECharts</span>
-    <span class="tag gold">永久在线</span>
-  </a>
+  <div class="charts-row">
+    <div class="chart-box"><div class="chart-title">📊 电压 / 电流趋势</div><div class="chart" id="chart_vi"></div></div>
+    <div class="chart-box"><div class="chart-title">📊 功率趋势</div><div class="chart" id="chart_p"></div></div>
+    <div class="chart-box"><div class="chart-title">📊 温度趋势</div><div class="chart" id="chart_t"></div></div>
+    <div class="chart-box"><div class="chart-title">📊 光照强度趋势</div><div class="chart" id="chart_l"></div></div>
+  </div>
 
-  <!-- 看板 B：完整云平台 -->
-  <a class="card" id="cloudLink" href="#" onclick="return goCloud()">
-    <div class="emoji">☁️</div>
-    <h2>完整云平台</h2>
-    <p>历史回溯 · 统计分析 · CSV 导出 · 数据库存储</p>
-    <span class="tag green">历史数据</span>
-    <span class="tag blue">数据分析</span>
-    <span class="tag gold">一应俱全</span>
-  </a>
-</div>
-
-<div class="footer">
-  光伏储能数据采集与追光控制系统 · 嵌入式比赛作品
+  <div class="footer">实时看板 v2.0 | MQTT Broker: broker-cn.emqx.io | Topic: pv_monitor/data</div>
 </div>
 
 <script>
-// 云平台地址（启动 start.bat 后会得到一个 trycloudflare 地址，更新下面这行）
-const CLOUD_URL = localStorage.getItem('pv_cloud_url') || '';
+// ============ ECharts 初始化 ============
+function createChart(id) {
+  const c = echarts.init(document.getElementById(id));
+  window.addEventListener('resize', () => c.resize());
+  return c;
+}
+const charts = {
+  vi: createChart('chart_vi'), p: createChart('chart_p'),
+  t: createChart('chart_t'), l: createChart('chart_l'),
+};
+function baseOpt() {
+  return {
+    grid: { top: 15, right: 15, bottom: 25, left: 50 },
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(17,22,64,0.95)', borderColor: '#1e2358', textStyle: { color: '#c8d6e5', fontSize: 11 } },
+    xAxis: { type: 'category', data: [], axisLine: { lineStyle: { color: '#1e2358' } }, axisTick: { show: false }, axisLabel: { color: '#8395a7', fontSize: 9, rotate: 30 } },
+    yAxis: { type: 'value', axisLine: { lineStyle: { color: '#1e2358' } }, splitLine: { lineStyle: { color: 'rgba(30,35,88,0.3)' } }, axisLabel: { color: '#8395a7', fontSize: 10 } },
+  };
+}
+Object.values(charts).forEach(c => c.setOption(baseOpt()));
 
-function goCloud() {
-  if (CLOUD_URL) {
-    window.open(CLOUD_URL, '_blank');
-  } else {
-    var url = prompt(
-      '请输入云平台地址：\n\n' +
-      '（启动 start.bat 后，黑窗口中会显示 https://xxx.trycloudflare.com）\n\n' +
-      '如果在本机运行，请输入：http://localhost:3000',
-      'http://localhost:3000'
-    );
-    if (url) {
-      localStorage.setItem('pv_cloud_url', url);
-      window.open(url, '_blank');
+// ============ MQTT 实时数据 ============
+const MAX_POINTS = 200;
+let realtimeData = [];
+let connected = false;
+
+function setStatus(on) {
+  const el = document.getElementById('status');
+  connected = on;
+  el.textContent = on ? '● 在线' : '● 离线';
+  el.className = 'status ' + (on ? 'online' : 'offline');
+}
+
+function updateCards(d) {
+  document.getElementById('val_v').textContent = d.voltage.toFixed(2);
+  document.getElementById('val_c').textContent = d.current.toFixed(2);
+  document.getElementById('val_p').textContent = d.power.toFixed(2);
+  document.getElementById('val_t').textContent = d.temp.toFixed(1);
+  document.getElementById('val_l').textContent = d.light.toFixed(1);
+}
+
+function fmtTime(ts) { const d = new Date(ts); return d.toLocaleTimeString('zh-CN', { hour12: false }); }
+
+function updateRealtimeChart() {
+  const labels = realtimeData.map(d => fmtTime(d.timestamp));
+  charts.vi.setOption({
+    xAxis: { data: labels },
+    series: [
+      { name: '电压(V)', type: 'line', data: realtimeData.map(d=>d.voltage), smooth: true, symbol: 'none', lineStyle: {color:'#f7b731',width:2}, areaStyle: {color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(247,183,49,0.25)'},{offset:1,color:'rgba(247,183,49,0)'}]) } },
+      { name: '电流(A)', type: 'line', data: realtimeData.map(d=>d.current), smooth: true, symbol: 'none', lineStyle: {color:'#45aaf2',width:2}, areaStyle: {color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(69,170,242,0.25)'},{offset:1,color:'rgba(69,170,242,0)'}]) } },
+    ],
+  });
+  charts.p.setOption({
+    xAxis: { data: labels },
+    series: [{ name: '功率(W)', type: 'line', data: realtimeData.map(d=>d.power), smooth: true, symbol: 'none', lineStyle: {color:'#fc5c65',width:2}, areaStyle: {color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(252,92,101,0.3)'},{offset:1,color:'rgba(252,92,101,0)'}]) } }],
+  });
+  charts.t.setOption({
+    xAxis: { data: labels },
+    series: [{ name: '温度(°C)', type: 'line', data: realtimeData.map(d=>d.temp), smooth: true, symbol: 'none', lineStyle: {color:'#fd9644',width:2}, areaStyle: {color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(253,150,68,0.25)'},{offset:1,color:'rgba(253,150,68,0)'}]) } }],
+  });
+  charts.l.setOption({
+    xAxis: { data: labels },
+    series: [{ name: '光照(W/m²)', type: 'line', data: realtimeData.map(d=>d.light), smooth: true, symbol: 'none', lineStyle: {color:'#fed330',width:2}, areaStyle: {color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(254,211,48,0.25)'},{offset:1,color:'rgba(254,211,48,0)'}]) } }],
+  });
+}
+
+// ============ MQTT 连接 ============
+const mqttClient = mqtt.connect('wss://broker-cn.emqx.io:8084/mqtt', {
+  clientId: 'realtime_' + Math.random().toString(16).slice(2, 8),
+  clean: true, reconnectPeriod: 3000,
+});
+
+mqttClient.on('connect', () => {
+  setStatus(true);
+  mqttClient.subscribe('pv_monitor/data');
+});
+
+mqttClient.on('message', (t, p) => {
+  try {
+    const d = JSON.parse(p.toString());
+    updateCards(d);
+    realtimeData.push({ ...d, timestamp: Date.now() });
+    if (realtimeData.length > MAX_POINTS) realtimeData.shift();
+    if (!updateRealtimeChart._t) {
+      updateRealtimeChart._t = setTimeout(() => { updateRealtimeChart(); updateRealtimeChart._t = null; }, 500);
     }
-  }
-  return false;
-}
+  } catch(e) {}
+});
 
-// 如果之前设置过，自动更新链接
-if (CLOUD_URL) {
-  document.getElementById('cloudLink').href = CLOUD_URL;
-  document.getElementById('cloudLink').onclick = null;
-}
+mqttClient.on('reconnect', () => setStatus(false));
+mqttClient.on('close', () => setStatus(false));
 </script>
 </body>
 </html>
